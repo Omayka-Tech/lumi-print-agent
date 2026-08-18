@@ -1,0 +1,20 @@
+# Config de caja (default). El agente NO habla con Lumi en este modo.
+printer:
+  host: ""
+  port: 9100
+  driver_id: escpos_network
+  timeout: 10
+  cidr: ""
+autostart: false
+local_api_host: 127.0.0.1
+local_api_port: 17890
+log_level: INFO
+
+# Avanzado (apagado). Poll de cola cloud — no usar en v1 GUI.
+poll_enabled: false
+# api_url: https://app.example.com/api/v1
+# tenant_host: tenant.example.com
+# api_key: lumi_REPLACE_WITH_KEY
+# poll_interval: 5
+# queue_limit: 10
+# branch_filter: ""

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lumi-print-agent"
+version = "0.1.0"
+description = "Agente local de impresión Lumi: tubo ESC/POS en 127.0.0.1:17890, GUI de bandeja y modo headless."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "Proprietary" }
+authors = [{ name = "Omayka Tech" }]
+dependencies = [
+    "PyYAML>=5.4,<7",
+    "requests>=2.27,<3",
+]
+
+[project.optional-dependencies]
+headless = []
+gui = [
+    "pystray>=0.19.4",
+    "Pillow>=9.5.0,<10; python_version < '3.9'",
+    "Pillow>=10; python_version >= '3.9'",
+]
+dev = [
+    "pytest>=7.4.0,<9",
+]
+packaging = [
+    "pyinstaller>=5.13.2,<7",
+]
+
+[project.scripts]
+lumi-print-agent = "lumi_print_gui.app:main"
+lumi-print-agent-headless = "lumi_print_agent.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/Omayka-Tech/lumi-print-agent"
+
+[tool.setuptools.packages.find]
+include = ["lumi_print_agent*", "lumi_print_gui*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
