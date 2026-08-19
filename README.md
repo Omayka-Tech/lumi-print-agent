@@ -78,6 +78,35 @@ python -m lumi_print_agent --no-poll
 
 Python **3.8** es el piso (Win7). En macOS/Linux de desarrollo, 3.10+.
 
+### macOS + pyenv: `libtk8.6.dylib` no found
+
+pyenv compilado contra Tcl/Tk 8.6 se rompe cuando Homebrew pasa a Tcl/Tk 9.
+
+```bash
+brew install tcl-tk@8
+# o: ./packaging/macos-fix-tkinter.sh
+python -m lumi_print_gui
+```
+
+La GUI relanza sola el proceso con `DYLD_FALLBACK_LIBRARY_PATH` si encuentra `tcl-tk@8`. Si no:
+
+```bash
+export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix tcl-tk@8)/lib${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
+python -m lumi_print_gui
+```
+
+O recreá el venv con Homebrew Python (incluye Tk):
+
+```bash
+brew install python@3.13 python-tk@3.13
+/opt/homebrew/bin/python3.13 -m venv .venv --clear
+source .venv/bin/activate
+pip install -e ".[gui,dev]"
+python -m lumi_print_gui
+```
+
+El tubo HTTP no necesita Tk: `python -m lumi_print_agent --no-poll`.
+
 Config: `%LOCALAPPDATA%\Lumi\print-agent\config.yaml` (o `LUMI_PRINT_AGENT_CONFIG`). Ver `config.example.yaml`.
 
 Tests:

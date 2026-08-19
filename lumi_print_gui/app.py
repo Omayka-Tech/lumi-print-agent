@@ -22,6 +22,7 @@ from lumi_print_agent.state import RUNTIME
 
 from . import autostart
 from .install import needs_self_install, self_install_and_relaunch
+from .macos_tk import reexec_with_tcl_tk8
 from .tray import TrayController
 
 
@@ -52,7 +53,7 @@ class PrintAgentApp:
 
         self.root = tk.Tk()
         self.root.title("Lumi Print Agent")
-        self.root.minsize(420, 460)
+        self.root.minsize(420, 520)
         self.root.protocol("WM_DELETE_WINDOW", self._hide_to_tray)
 
         pad = {"padx": 10, "pady": 4}
@@ -83,22 +84,28 @@ class PrintAgentApp:
         ttk.Label(row, text="Puerto").pack(side=tk.LEFT)
         ttk.Entry(row, textvariable=self.port_var, width=6).pack(side=tk.LEFT, padx=6)
 
-        cidr_row = ttk.Frame(box)
-        cidr_row.pack(fill=tk.X, pady=(6, 0))
-        ttk.Label(cidr_row, text="LAN (CIDR)").pack(side=tk.LEFT)
-        ttk.Entry(cidr_row, textvariable=self.cidr_var, width=18).pack(side=tk.LEFT, padx=6)
-        ttk.Button(cidr_row, text="Descubrir LAN", command=self._on_discover).pack(side=tk.LEFT)
-
-        self.found = tk.Listbox(box, height=5)
-        self.found.pack(fill=tk.X, pady=6)
-        self.found.bind("<<ListboxSelect>>", self._on_select_found)
-
         btns = ttk.Frame(box)
-        btns.pack(fill=tk.X)
+        btns.pack(fill=tk.X, pady=(8, 0))
         ttk.Button(btns, text="Probar impresión (con corte)", command=self._on_test).pack(
             side=tk.LEFT
         )
-        ttk.Button(btns, text="Guardar", command=self._on_save).pack(side=tk.LEFT, padx=6)
+
+        discover = ttk.LabelFrame(frm, text="Descubrir en la LAN", padding=8)
+        discover.pack(fill=tk.BOTH, expand=True, **pad)
+        cidr_row = ttk.Frame(discover)
+        cidr_row.pack(fill=tk.X)
+        ttk.Label(cidr_row, text="LAN (CIDR)").pack(side=tk.LEFT)
+        ttk.Entry(cidr_row, textvariable=self.cidr_var, width=18).pack(side=tk.LEFT, padx=6)
+        ttk.Button(cidr_row, text="Descubrir LAN", command=self._on_discover).pack(side=tk.LEFT)
+        ttk.Label(
+            discover,
+            text="Elegí un resultado para copiarlo al host de arriba.",
+            wraplength=400,
+        ).pack(anchor=tk.W, pady=(6, 0))
+        self.found = tk.Listbox(discover, height=5)
+        self.found.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+        self.found.bind("<<ListboxSelect>>", self._on_select_found)
+        ttk.Button(discover, text="Guardar", command=self._on_save).pack(anchor=tk.W, pady=(8, 0))
 
         auto = ttk.LabelFrame(frm, text="Inicio con el sistema", padding=8)
         auto.pack(fill=tk.X, **pad)
@@ -347,6 +354,32 @@ class PrintAgentApp:
         return 0
 
 
+def _gui_import_error_hint(exc: BaseException) -> str:
+    text = str(exc)
+    lines = ["No se pudo abrir la GUI (tkinter): {}".format(text), ""]
+    if "libtk" in text or "_tkinter" in text or "tkinter" in text.lower():
+        if sys.platform == "darwin":
+            lines.extend(
+                [
+                    "En macOS, pyenv suele quedar ligado a Tcl/Tk 8.6 y Homebrew ya instala 9.x.",
+                    "Opción A — Tcl/Tk 8.6 junto al pyenv actual:",
+                    "  brew install tcl-tk@8",
+                    '  export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix tcl-tk@8)/lib${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"',
+                    "  python -m lumi_print_gui",
+                    "",
+                    "Opción B — venv con Python de Homebrew (Tk incluido):",
+                    "  brew install python@3.13 python-tk@3.13",
+                    "  /opt/homebrew/bin/python3.13 -m venv .venv --clear",
+                    '  source .venv/bin/activate && pip install -e ".[gui,dev]"',
+                    "",
+                    "El tubo headless no necesita Tk: python -m lumi_print_agent --no-poll",
+                ]
+            )
+        else:
+            lines.append("Instalá el paquete tkinter de tu distro (p.ej. python3-tk) e intentá de nuevo.")
+    return "\n".join(lines) + "\n"
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     dispatched = _dispatch_headless(args)
@@ -354,11 +387,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return dispatched
     if "--install" in args or needs_self_install():
         return self_install_and_relaunch()
+    reexec_with_tcl_tk8(args)
     try:
         app = PrintAgentApp()
     except Exception as exc:
-        sys.stderr.write("No se pudo abrir la GUI (¿tkinter?): {}\n".format(exc))
-        from lumi_print_agent.__main__ import main as headless_main
-
-        return headless_main(args)
+        sys.stderr.write(_gui_import_error_hint(exc))
+        return 1
     return app.run()
