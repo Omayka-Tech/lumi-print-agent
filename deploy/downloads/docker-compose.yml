@@ -1,0 +1,48 @@
+# Static downloads for Lumi Print Agent.
+# Host path (vps2): /opt/lumi/subprojects/downloads/
+# Mount ONLY printer-agent → nginx html root (no /opt/lumi, no siblings).
+#
+# One-time ops:
+#   mkdir -p /opt/lumi/subprojects/downloads/printer-agent/latest
+#   cp deploy/downloads/{docker-compose.yml,nginx.conf} /opt/lumi/subprojects/downloads/
+#   # optional seed index:
+#   # copy packaging output or leave empty until first release job
+#   cd /opt/lumi/subprojects/downloads && docker compose up -d
+#   DNS A/AAAA downloads.lumi.com.py → this host
+#
+# Traefik priority 200 beats Lumi prod HostRegexp (priority 10) for this host.
+
+name: lumi-downloads
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: lumi_downloads_nginx
+    restart: unless-stopped
+    volumes:
+      - /opt/lumi/subprojects/downloads/printer-agent:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - traefik_proxy_lumi
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_proxy_lumi"
+
+      - "traefik.http.routers.lumi-downloads.rule=Host(`downloads.lumi.com.py`)"
+      - "traefik.http.routers.lumi-downloads.priority=200"
+      - "traefik.http.routers.lumi-downloads.entrypoints=websecure"
+      - "traefik.http.routers.lumi-downloads.tls=true"
+      - "traefik.http.routers.lumi-downloads.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.lumi-downloads.service=lumi-downloads"
+      - "traefik.http.services.lumi-downloads.loadbalancer.server.port=80"
+
+      - "traefik.http.routers.lumi-downloads-http.rule=Host(`downloads.lumi.com.py`)"
+      - "traefik.http.routers.lumi-downloads-http.priority=200"
+      - "traefik.http.routers.lumi-downloads-http.entrypoints=web"
+      - "traefik.http.routers.lumi-downloads-http.middlewares=lumi-downloads-https"
+      - "traefik.http.routers.lumi-downloads-http.service=lumi-downloads"
+      - "traefik.http.middlewares.lumi-downloads-https.redirectscheme.scheme=https"
+
+networks:
+  traefik_proxy_lumi:
+    external: true

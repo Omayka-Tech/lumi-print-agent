@@ -2,6 +2,46 @@
 
 Agente local de impresión para [Lumi ERP](https://github.com/Omayka-Tech/lumi-erp). Una ventana, no un POS: habla con la ticketera (Epson TM-T88 y compatibles ESC/POS en `:9100`).
 
+## Descargas
+
+- **Canónico:** [https://downloads.lumi.com.py/](https://downloads.lumi.com.py/) — última build en [`/latest/`](https://downloads.lumi.com.py/latest/)
+- **GitHub Releases:** [Omayka-Tech/lumi-print-agent/releases](https://github.com/Omayka-Tech/lumi-print-agent/releases)
+
+Artefactos por tag `vX.Y.Z`:
+
+| Archivo | Plataforma |
+|---------|------------|
+| `LumiPrintAgent-windows-x86_64-vX.Y.Z.zip` | Windows 7+ (x86/x64) |
+| `LumiPrintAgent-macos-arm64-vX.Y.Z.tar.gz` | macOS 12+ (Apple Silicon) |
+| `LumiPrintAgent-linux-x86_64-vX.Y.Z.tar.gz` | Linux x86_64 |
+| `SHA256SUMS` | Checksums |
+
+### Soporte
+
+| Plataforma | Runtime soportado | Notas |
+|------------|-------------------|--------|
+| Windows | **7+** (x86/x64) | Build CI con CPython **3.8** en runner moderno; el runtime sigue siendo Win7+ |
+| macOS | **12+** | Arm64 (Apple Silicon) |
+| Linux | **x86_64** | glibc reciente (Ubuntu 22.04+) |
+| Python | Solo builds desde fuente | 3.8+ (piso Win7); 3.10+ recomendado en macOS/Linux |
+
+### Requisitos en caja
+
+- Ticketera ESC/POS en red (`:9100`) o USB vía driver compatible.
+- Chrome / POS web hablando con el agente en `http://127.0.0.1:17890` (sin API key en el modo default).
+- Extraer el zip/tar → ejecutar el binario **una vez** → self-install a carpeta de usuario (ver abajo).
+
+### Cómo liberar una versión
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Eso dispara `.github/workflows/release.yml`: build Win/macOS/Linux → GitHub Release + espejo en `downloads.lumi.com.py`.
+
+---
+
 Requiere **Windows 7+** / macOS / Linux. El POS desktop Tauri queda para cajas Win10+.
 
 ## Default (esta versión)
@@ -20,8 +60,8 @@ El poll vive en el núcleo (`lumi_print_agent.agent`) y está **apagado**. No ha
 
 ## Instalación (sin MSI)
 
-1. Bajá el folder `LumiPrintAgent` (PyInstaller onedir) o corré desde fuente.
-2. Abrí `LumiPrintAgent.exe` **una vez**.
+1. Bajá el zip/tar desde [downloads.lumi.com.py/latest/](https://downloads.lumi.com.py/latest/) (o GitHub Releases) y extraélo.
+2. Abrí `LumiPrintAgent` / `LumiPrintAgent.exe` **una vez**.
 3. El agente se copia solo a una ruta de usuario (sin admin):
    - Windows: `%LOCALAPPDATA%\Lumi\print-agent\`
    - macOS: `~/Library/Application Support/Lumi/print-agent/`
@@ -115,26 +155,27 @@ Tests:
 python -m pytest -q
 ```
 
-## Builds
+## Builds (local)
 
-No hay Inno/MSI/.deb en esta entrega.
+No hay Inno/MSI/.deb en esta entrega. Releases oficiales: ver **Descargas** arriba.
 
 ```bash
-# Linux
+./packaging/sync-version.sh v0.1.0   # opcional en local
 ./packaging/build-linux.sh
-
-# macOS
 ./packaging/build-macos.sh
+./packaging/package-artifact.sh linux x86_64
 ```
 
-Windows 7 (32/64): **CPython 3.8** en una VM Win7 o runner self-hosted. GitHub Actions no ofrece Win7.
+Windows 7+ (artefacto portable): **CPython 3.8**. En CI se usa un runner Windows moderno + Python 3.8 (no hace falta VM Win7).
 
 ```powershell
 py -3.8 -m pip install -e ".[gui,packaging]"
 powershell -File packaging/build-win7.ps1
 ```
 
-CI (`.github/workflows/ci.yml`): tests en Ubuntu + macOS (3.8/3.12) y Windows 2019 (exe moderno / tests). El artefacto Win7 se genera en la VM.
+CI (`.github/workflows/ci.yml`): tests. Release (`.github/workflows/release.yml`): binarios + GitHub Release + espejo en vps2.
+
+Stack estático del espejo: `deploy/downloads/` (nginx + Traefik, fuera del compose de Lumi prod).
 
 ## Embed en branch-server (headless)
 
@@ -167,5 +208,6 @@ Environment=LUMI_PRINT_HEADLESS=1
 
 - `lumi_print_agent/` — núcleo (pipe + poll apagado)
 - `lumi_print_gui/` — ventana, bandeja, self-install, autostart
-- `packaging/` — PyInstaller
+- `packaging/` — PyInstaller, sync-version, package-artifact
+- `deploy/downloads/` — compose nginx + Traefik para downloads.lumi.com.py
 - `tests/`
