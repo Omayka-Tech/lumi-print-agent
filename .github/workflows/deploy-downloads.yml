@@ -1,0 +1,55 @@
+name: Deploy downloads stack
+
+# One-shot / repeatable ops: create tree + nginx+Traefik on the vps2 self-hosted runner.
+# Does not publish binaries (use Release / tag v* for that).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-downloads
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, lumi]
+    timeout-minutes: 15
+    steps:
+      - name: Guard — runner must not be root
+        run: |
+          set -euo pipefail
+          echo "runner_user=$(id -un) uid=$(id -u)"
+          if [ "$(id -u)" -eq 0 ]; then
+            echo "::error::Self-hosted runner is root."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Install downloads stack on host
+        env:
+          DEST: /opt/lumi/subprojects/downloads
+        run: |
+          set -euo pipefail
+          mkdir -p "${DEST}/printer-agent/latest"
+
+          cp -f deploy/downloads/docker-compose.yml "${DEST}/docker-compose.yml"
+          cp -f deploy/downloads/nginx.conf "${DEST}/nginx.conf"
+          cp -f deploy/downloads/README.md "${DEST}/README.md"
+          cp -f deploy/downloads/seed-index.html "${DEST}/seed-index.html"
+
+          if [[ ! -f "${DEST}/printer-agent/index.html" ]]; then
+            cp -f deploy/downloads/seed-index.html "${DEST}/printer-agent/index.html"
+          fi
+
+          chmod -R u=rwX,go=rX "${DEST}"
+
+          cd "${DEST}"
+          docker compose up -d
+          docker compose ps
+          docker logs lumi_downloads_nginx --tail 50 || true
+          ls -la "${DEST}"
+          ls -la "${DEST}/printer-agent"
