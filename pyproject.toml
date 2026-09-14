@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lumi-print-agent"
-version = "0.1.1"
+version = "0.1.2"
 description = "Agente local de impresión Lumi: tubo ESC/POS en 127.0.0.1:17890, GUI de bandeja y modo headless."
 readme = "README.md"
 requires-python = ">=3.7"

@@ -11,6 +11,9 @@ from typing import List, Optional
 
 from lumi_print_agent.paths import is_frozen, user_data_dir
 
+# Keep user config/logs when refreshing the frozen tree.
+_PRESERVE_NAMES = frozenset({"config.yaml", "config.yml", "logs"})
+
 
 def needs_self_install() -> bool:
     if os.environ.get("LUMI_PRINT_PORTABLE") == "1":
@@ -31,20 +34,33 @@ def installed_executable() -> Path:
 
 
 def copy_into_user_dir() -> Path:
+    """Copy the full PyInstaller onedir (exe + sibling DLLs + _internal).
+
+    PyInstaller 5.x Win onedir keeps ``pythonXY.dll`` / VCRuntime next to the
+    exe (not only under ``_internal``). Copying just the exe left AppData
+    broken with ``Error loading Python DLL ... python37.dll``.
+    """
     dest = user_data_dir()
     dest.mkdir(parents=True, exist_ok=True)
     src_exe = Path(sys.executable).resolve()
     src_dir = src_exe.parent
     target_exe = dest / src_exe.name
-    if src_exe != target_exe:
-        shutil.copy2(str(src_exe), str(target_exe))
-    internal = src_dir / "_internal"
-    if internal.is_dir():
-        dest_internal = dest / "_internal"
-        if dest_internal.exists() and dest_internal.resolve() != internal.resolve():
-            shutil.rmtree(str(dest_internal))
-        if not dest_internal.exists():
-            shutil.copytree(str(internal), str(dest_internal))
+
+    if src_dir.resolve() == dest.resolve():
+        return target_exe
+
+    for item in src_dir.iterdir():
+        name = item.name
+        if name in _PRESERVE_NAMES:
+            continue
+        dest_item = dest / name
+        if item.is_dir():
+            if dest_item.exists():
+                shutil.rmtree(str(dest_item))
+            shutil.copytree(str(item), str(dest_item))
+        else:
+            shutil.copy2(str(item), str(dest_item))
+
     return target_exe
 
 
