@@ -1,5 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec: onedir portable (Win7 / macOS / Linux)."""
+"""PyInstaller spec: onedir portable (Win7 / macOS / Linux).
+
+Windows frozen builds MUST use CPython 3.7.x for virgin Win7 SP1 hosts.
+Python 3.8+ needs KB2533623/KB3063858 (SetDefaultDllDirectories) or
+``_socket`` fails with \"parameter is incorrect\" during import.
+"""
 
 import os
 import sys
@@ -26,6 +31,15 @@ elif sys.platform == "darwin":
 else:
     hidden.append("pystray._util.gtk")
 
+# Agent does not use multiprocessing; excluding avoids pyi_rth_multiprocessing
+# which eagerly imports socket and surfaces Win7 DLL failures before our UI.
+excludes = [
+    "multiprocessing",
+    "multiprocessing.spawn",
+    "multiprocessing.popen_spawn_win32",
+    "concurrent.futures.process",
+]
+
 a = Analysis(
     [os.path.join(spec_root, "entry.py")],
     pathex=[repo],
@@ -35,7 +49,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
 )
 

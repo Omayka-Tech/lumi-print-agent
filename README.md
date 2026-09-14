@@ -20,10 +20,18 @@ Artefactos por tag `vX.Y.Z`:
 
 | Plataforma | Runtime soportado | Notas |
 |------------|-------------------|--------|
-| Windows | **7+** (x86/x64) | Build CI con CPython **3.8** en runner moderno; el runtime sigue siendo Win7+ |
+| Windows | **7+** (x86/x64) | Frozen build con **CPython 3.7.9** (ABI Win7). Win7 sin parches falla con Python 3.8+ (`_socket` / “parámetro incorrecto”) |
 | macOS | **12+** | Arm64 (Apple Silicon) |
 | Linux | **x86_64** | glibc reciente (Ubuntu 22.04+) |
-| Python | Solo builds desde fuente | 3.8+ (piso Win7); 3.10+ recomendado en macOS/Linux |
+| Python | Solo builds desde fuente | 3.7+ en Win7; 3.8+ / 3.10+ recomendado en macOS/Linux |
+
+### Win7: error `_socket` / `pyi_rth_multiprocessing`
+
+Si ves `DLL load failed while importing _socket: El parámetro no es correcto`:
+
+1. Preferí el zip **v0.1.1+** (build 3.7), no el v0.1.0 (3.8).
+2. O instalá en la caja el update **KB2533623** / **KB3063858** / **KB3126587** (API `SetDefaultDllDirectories`) y reintentá el exe 3.8.
+3. Mientras tanto PosLite puede imprimir por TCP `:9100` sin el agente.
 
 ### Requisitos en caja
 
@@ -116,7 +124,7 @@ python -m lumi_print_gui
 python -m lumi_print_agent --no-poll
 ```
 
-Python **3.8** es el piso (Win7). En macOS/Linux de desarrollo, 3.10+.
+Python **3.7** es el piso del freeze Win7; en fuente en macOS/Linux de desarrollo, 3.10+.
 
 ### macOS + pyenv: `libtk8.6.dylib` no found
 

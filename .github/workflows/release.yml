@@ -19,7 +19,8 @@ jobs:
       matrix:
         include:
           - os: windows-2022
-            python-version: "3.8"
+            # 3.7.x ABI works on unpatched Win7 SP1; 3.8+ needs KB2533623/KB3063858
+            python-version: "3.7"
             artifact_os: windows
             artifact_arch: x86_64
           - os: macos-latest
@@ -35,7 +36,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install CPython 3.7.9 (Win7-safe ABI)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://www.python.org/ftp/python/3.7.9/python-3.7.9-amd64.exe"
+          $installer = Join-Path $env:RUNNER_TEMP "python-3.7.9-amd64.exe"
+          $target = "C:\Python37"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $installer
+          Write-Host "Installing to $target"
+          Start-Process -FilePath $installer -ArgumentList @(
+            "/quiet",
+            "InstallAllUsers=0",
+            "PrependPath=0",
+            "Include_test=0",
+            "Include_doc=0",
+            "Include_launcher=0",
+            "Include_pip=1",
+            "TargetDir=$target"
+          ) -Wait
+          & "$target\python.exe" -c "import sys; print(sys.version)"
+          echo "LUMI_PRINT_PYTHON=$target\python.exe" >> $env:GITHUB_ENV
+          echo "$target" >> $env:GITHUB_PATH
+          echo "$target\Scripts" >> $env:GITHUB_PATH
+
       - uses: actions/setup-python@v5
+        if: runner.os != 'Windows'
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -50,13 +78,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -U pip
+          python -m pip install -U "pip<25" "setuptools<70" wheel
           pip install -e ".[gui,packaging]"
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./packaging/build-win7.ps1
+        run: |
+          $env:LUMI_PRINT_PYTHON = if ($env:LUMI_PRINT_PYTHON) { $env:LUMI_PRINT_PYTHON } else { "C:\Python37\python.exe" }
+          ./packaging/build-win7.ps1
 
       - name: Build (macOS)
         if: runner.os == 'macOS'

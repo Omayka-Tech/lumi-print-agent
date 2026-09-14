@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lumi-print-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Agente local de impresión Lumi: tubo ESC/POS en 127.0.0.1:17890, GUI de bandeja y modo headless."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.7"
 license = { text = "Proprietary" }
 authors = [{ name = "Omayka Tech" }]
 dependencies = [
@@ -19,14 +19,15 @@ dependencies = [
 headless = []
 gui = [
     "pystray>=0.19.4",
-    "Pillow>=9.5.0,<10; python_version < '3.9'",
+    "Pillow>=8.4.0,<10; python_version < '3.9'",
     "Pillow>=10; python_version >= '3.9'",
 ]
 dev = [
     "pytest>=7.4.0,<9",
 ]
 packaging = [
-    "pyinstaller>=5.13.2,<7",
+    # 5.13 bootloader is the last line that still targets Win7 reasonably.
+    "pyinstaller>=5.13.2,<6",
 ]
 
 [project.scripts]
