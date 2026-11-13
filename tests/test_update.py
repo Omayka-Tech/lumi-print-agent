@@ -59,3 +59,44 @@ def test_from_downloads_parses_sha256sums(monkeypatch):
 
 def test_current_version_nonzero():
     assert current_version()
+
+
+def test_ssl_verify_uses_certifi(monkeypatch):
+    from lumi_print_agent import update
+
+    monkeypatch.setattr(
+        "certifi.where",
+        lambda: "/tmp/fake-cacert.pem",
+        raising=False,
+    )
+    # Import path used inside _ssl_verify
+    import certifi
+
+    monkeypatch.setattr(certifi, "where", lambda: "/tmp/fake-cacert.pem")
+    assert update._ssl_verify() == "/tmp/fake-cacert.pem"
+
+
+def test_check_for_update_prefers_github(monkeypatch):
+    from lumi_print_agent import update
+
+    calls = []
+
+    def fake_github(timeout=12.0):
+        calls.append("github")
+        return update.ReleaseInfo(
+            version="0.1.5",
+            asset_name="LumiPrintAgent-macos-arm64-v0.1.5.tar.gz",
+            url="https://example/x.tar.gz",
+            source="github",
+        )
+
+    def fake_downloads(timeout=12.0):
+        calls.append("downloads")
+        raise AssertionError("downloads no debería llamarse si GitHub responde")
+
+    monkeypatch.setattr(update, "_from_github", fake_github)
+    monkeypatch.setattr(update, "_from_downloads", fake_downloads)
+    info = update.check_for_update()
+    assert info is not None
+    assert info.source == "github"
+    assert calls == ["github"]

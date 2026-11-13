@@ -9,7 +9,7 @@ Python 3.8+ needs KB2533623/KB3063858 (SetDefaultDllDirectories) or
 import os
 import sys
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 spec_root = os.path.dirname(os.path.abspath(SPEC))
 repo = os.path.dirname(spec_root)
@@ -21,8 +21,10 @@ hidden += [
     "PIL.ImageDraw",
     "yaml",
     "requests",
+    "certifi",
     "pystray",
 ]
+certifi_datas = collect_data_files("certifi")
 
 if sys.platform == "win32":
     hidden.append("pystray._win32")
@@ -65,7 +67,8 @@ a = Analysis(
             os.path.join(repo, "VERSION"),
             ".",
         ),
-    ],
+    ]
+    + certifi_datas,
     hiddenimports=hidden,
     hookspath=[],
     hooksconfig={},

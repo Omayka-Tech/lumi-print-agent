@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import platform
 import re
 import shutil
@@ -13,7 +12,8 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.request import Request, urlopen
+
+import requests
 
 from .version import current_version, is_newer
 
@@ -58,9 +58,10 @@ def platform_tokens() -> Tuple[str, str, str]:
 
 
 def check_for_update(timeout: float = 12.0) -> Optional[ReleaseInfo]:
-    """Consulta latest en el espejo público; si falla, GitHub Releases."""
+    """Consulta GitHub Releases (público); si falla, espejo downloads.lumi.com.py."""
     errors: List[str] = []
-    for finder in (_from_downloads, _from_github):
+    # GitHub primero: el espejo a veces sirve el SPA de Lumi en /latest/.
+    for finder in (_from_github, _from_downloads):
         try:
             info = finder(timeout=timeout)
         except Exception as exc:  # noqa: BLE001 — best-effort cascade
@@ -195,25 +196,52 @@ def _find_app_tree(root: Path) -> Optional[Path]:
     return None
 
 
+def _ssl_verify():
+    """CA bundle embebido (PyInstaller/Win7 no ve bien el store del sistema)."""
+    try:
+        import certifi
+
+        return certifi.where()
+    except Exception:
+        return True
+
+
+def _session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT})
+    session.verify = _ssl_verify()
+    return session
+
+
 def _download(url: str, dest: Path, timeout: float = 120.0) -> None:
-    req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
-    with urlopen(req, timeout=timeout) as resp, dest.open("wb") as fh:
-        shutil.copyfileobj(resp, fh)
+    with _session().get(url, timeout=timeout, stream=True, allow_redirects=True) as resp:
+        resp.raise_for_status()
+        with dest.open("wb") as fh:
+            for chunk in resp.iter_content(chunk_size=1024 * 256):
+                if chunk:
+                    fh.write(chunk)
 
 
 def _http_text(url: str, timeout: float = 12.0) -> str:
-    req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/plain,text/html,*/*"})
-    with urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", "replace")
+    resp = _session().get(
+        url,
+        timeout=timeout,
+        headers={"Accept": "text/plain,text/html,*/*"},
+        allow_redirects=True,
+    )
+    resp.raise_for_status()
+    return resp.text
 
 
 def _http_json(url: str, timeout: float = 12.0) -> Dict[str, Any]:
-    req = Request(
+    resp = _session().get(
         url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "application/vnd.github+json",
-        },
+        timeout=timeout,
+        headers={"Accept": "application/vnd.github+json"},
+        allow_redirects=True,
     )
-    with urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError("JSON object requerido")
+    return data
