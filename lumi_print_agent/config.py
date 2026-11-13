@@ -18,6 +18,16 @@ class PrinterSettings:
     driver_id: str = "escpos_network"
     timeout: float = 10.0
     cidr: str = ""
+    manufacturer: str = ""
+    model: str = ""
+    serial: str = ""
+
+    def label(self) -> str:
+        parts = [self.manufacturer, self.model]
+        text = " ".join(p for p in parts if p).strip()
+        if text and self.model.upper().startswith(self.manufacturer.upper()) and self.manufacturer:
+            text = self.model
+        return text
 
 
 @dataclass
@@ -55,6 +65,9 @@ def _as_printer(raw: Any) -> PrinterSettings:
         driver_id=str(raw.get("driver_id") or "escpos_network"),
         timeout=float(raw.get("timeout") or 10),
         cidr=str(raw.get("cidr") or ""),
+        manufacturer=str(raw.get("manufacturer") or ""),
+        model=str(raw.get("model") or ""),
+        serial=str(raw.get("serial") or ""),
     )
 
 

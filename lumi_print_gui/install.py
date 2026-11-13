@@ -112,13 +112,25 @@ def copy_into_user_dir() -> Path:
     exe (not only under ``_internal``). Copying just the exe left AppData
     broken with ``Error loading Python DLL ... python37.dll``.
     """
+    src_exe = Path(sys.executable).resolve()
+    return copy_tree_into_user_dir(src_exe.parent, exe_name=src_exe.name)
+
+
+def copy_tree_into_user_dir(src_dir: Path, exe_name: Optional[str] = None) -> Path:
+    """Copia un árbol onedir (release o build local) a la carpeta de usuario."""
     dest = user_data_dir()
     dest.mkdir(parents=True, exist_ok=True)
-    src_exe = Path(sys.executable).resolve()
-    src_dir = src_exe.parent
-    target_exe = dest / src_exe.name
+    src_dir = Path(src_dir).resolve()
+    if exe_name:
+        target_exe = dest / exe_name
+    else:
+        candidates = sorted(src_dir.glob("LumiPrintAgent*"))
+        exe = next((p for p in candidates if p.is_file()), None)
+        if exe is None:
+            raise FileNotFoundError("No hay ejecutable LumiPrintAgent en {}".format(src_dir))
+        target_exe = dest / exe.name
 
-    if src_dir.resolve() == dest.resolve():
+    if src_dir == dest.resolve():
         return target_exe
 
     _grant_user_acl(dest)
@@ -232,5 +244,11 @@ def self_install_and_relaunch() -> int:
                 raise
             _report_install_permission_error(user_data_dir(), again)
             return 1
-    relaunch_installed()
+    try:
+        from . import autostart
+
+        autostart.enable()
+    except Exception:
+        pass
+    relaunch_installed(extra_args=["--hidden"])
     return 0

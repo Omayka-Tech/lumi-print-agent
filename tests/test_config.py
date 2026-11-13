@@ -18,10 +18,15 @@ def test_roundtrip_printer_only(tmp_path):
     cfg = load_config(str(path))
     cfg.printer.host = "192.168.2.2"
     cfg.printer.port = 9100
+    cfg.printer.manufacturer = "EPSON"
+    cfg.printer.model = "TM-T88VII"
     cfg.autostart = True
     save_config(cfg, str(path))
     loaded = load_config(str(path))
     assert loaded.printer.host == "192.168.2.2"
+    assert loaded.printer.manufacturer == "EPSON"
+    assert loaded.printer.model == "TM-T88VII"
+    assert loaded.printer.label() == "EPSON TM-T88VII"
     assert loaded.autostart is True
     assert "api_key" not in path.read_text(encoding="utf-8")
 

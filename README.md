@@ -74,9 +74,9 @@ El poll vive en el núcleo (`lumi_print_agent.agent`) y está **apagado**. No ha
    - Windows: `%LOCALAPPDATA%\Lumi\print-agent\`
    - macOS: `~/Library/Application Support/Lumi/print-agent/`
    - Linux: `~/.local/share/lumi/print-agent/`
-4. Relanza desde esa copia. Ahí sí podés activar **Arrancar al iniciar sesión**.
+4. Relanza desde esa copia **oculto en la bandeja** (`--hidden`) y deja autostart activo.
 
-Autostart (usuario de caja, no servicio SYSTEM):
+Autostart (usuario de caja, no servicio SYSTEM; arranca con `--hidden`):
 
 - Windows: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`LumiPrintAgent`)
 - macOS: `~/Library/LaunchAgents/tech.omayka.lumi-print-agent.plist`
@@ -91,9 +91,12 @@ Modo portable (no copiar): `LUMI_PRINT_PORTABLE=1` o flag `--portable`.
 ## GUI
 
 - Estado: escuchando `:17890`, impresora elegida, último trabajo / error
-- Host / puerto `9100`, descubrir LAN, test print **con corte** (`GS V 0`)
+- Host / puerto `9100`, descubrir LAN (marca/modelo ESC/POS), test print **con corte** (`GS V 0`)
 - Toggle autostart (después del self-install)
-- Bandeja: Abrir / Probar / Salir
+- Botón **↻** / menú de bandeja **Actualizar…**: baja el latest de [downloads.lumi.com.py](https://downloads.lumi.com.py/) (fallback GitHub Releases)
+- Icono de impresora + faro Lumi (bandeja, ventana y `.ico`/favicon)
+- Instalado o con `--hidden`: solo icono cerca del reloj (sin ventana). Abrí desde la bandeja.
+- Bandeja: Abrir / Actualizar… / Probar / Salir
 
 ## API local
 
@@ -103,8 +106,8 @@ CORS solo `localhost` / `127.0.0.1` (Chrome del POS).
 |--------|------|-------------|
 | GET | `/health` | `{ status: ok }` |
 | GET | `/status` | Puerto, impresora, último job |
-| GET | `/discover?cidr=` | Ticketeras LAN `:9100` |
-| GET | `/printers?cidr=` | CUPS + LAN |
+| GET | `/discover?cidr=` | Ticketeras LAN `:9100` (marca/modelo vía GS I + OUI) |
+| GET | `/printers?cidr=` | CUPS + LAN, con `manufacturer` / `model` / `label` |
 | POST | `/print-direct` | `{ driver_id, connection_detail, content_base64 }` |
 | POST | `/ui/open` | Muestra la ventana (si hay GUI) |
 | POST | `/process-once` | Un ciclo de cola cloud (si hay API key) |

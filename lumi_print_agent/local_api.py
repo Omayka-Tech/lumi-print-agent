@@ -19,6 +19,7 @@ from .drivers import send_payload
 from .os_printers import list_local_printers
 from .paths import default_config_path
 from .state import RUNTIME
+from .version import current_version
 
 logger = logging.getLogger("lumi_print_agent.local_api")
 
@@ -108,7 +109,7 @@ class LocalApiHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/health":
-            self._json(200, {"status": "ok", "port": self.bind_port})
+            self._json(200, {"status": "ok", "port": self.bind_port, "version": current_version()})
             return
         if parsed.path == "/status":
             cfg = load_config(self.config_path)
@@ -118,10 +119,15 @@ class LocalApiHandler(BaseHTTPRequestHandler):
                     "listening": True,
                     "host": self.bind_host,
                     "port": self.bind_port,
+                    "version": current_version(),
                     "printer": {
                         "host": cfg.printer.host,
                         "port": cfg.printer.port,
                         "driver_id": cfg.printer.driver_id,
+                        "manufacturer": cfg.printer.manufacturer,
+                        "model": cfg.printer.model,
+                        "serial": cfg.printer.serial,
+                        "label": cfg.printer.label(),
                     },
                     "last_job": RUNTIME.snapshot(),
                 },

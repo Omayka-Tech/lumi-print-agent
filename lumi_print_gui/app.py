@@ -5,11 +5,12 @@ from __future__ import annotations
 import os
 import sys
 import threading
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from lumi_print_agent.config import AgentConfig, load_config, save_config
 from lumi_print_agent.discover import guess_cidr, scan_subnet
 from lumi_print_agent.drivers import send_test_print
+from lumi_print_agent.identify import identify_escpos, printer_label
 from lumi_print_agent.local_api import (
     DEFAULT_HOST,
     DEFAULT_PORT,
@@ -19,10 +20,12 @@ from lumi_print_agent.local_api import (
 )
 from lumi_print_agent.paths import default_config_path, is_frozen, user_data_dir
 from lumi_print_agent.state import RUNTIME
+from lumi_print_agent.version import current_version
 
 from . import autostart
 from .install import needs_self_install, self_install_and_relaunch
 from .macos_tk import reexec_with_tcl_tk8
+from .icon import apply_window_icon
 from .tray import TrayController
 
 
@@ -37,11 +40,12 @@ def _dispatch_headless(argv: List[str]) -> Optional[int]:
 
 
 class PrintAgentApp:
-    def __init__(self) -> None:
+    def __init__(self, start_hidden: bool = False) -> None:
         import tkinter as tk
-        from tkinter import ttk
+        from tkinter import messagebox, ttk
 
         self.tk = tk
+        self.messagebox = messagebox
         self.cfg_path = str(default_config_path())
         self.cfg: AgentConfig = load_config(self.cfg_path)
         self.server = None
@@ -50,8 +54,11 @@ class PrintAgentApp:
         self.busy = False
         self.tray: Optional[TrayController] = None
         self._exiting = False
+        self._found_devices: List[Any] = []
+        self.start_hidden = bool(start_hidden)
 
         self.root = tk.Tk()
+        apply_window_icon(self.root)
         self.root.title("Lumi Print Agent")
         self.root.minsize(420, 520)
         self.root.protocol("WM_DELETE_WINDOW", self._hide_to_tray)
@@ -67,10 +74,15 @@ class PrintAgentApp:
         self.install_var = tk.StringVar(value="")
         self.autostart_var = tk.BooleanVar(value=self.cfg.autostart or autostart.is_enabled())
         self.cidr_var = tk.StringVar(value=self.cfg.printer.cidr or guess_cidr())
+        self.version_var = tk.StringVar(value="v{}".format(current_version()))
 
-        ttk.Label(frm, text="Agente de impresión", font=("TkDefaultFont", 14, "bold")).pack(
-            anchor=tk.W, **pad
-        )
+        title_row = ttk.Frame(frm)
+        title_row.pack(fill=tk.X, **pad)
+        ttk.Label(
+            title_row, text="Agente de impresión", font=("TkDefaultFont", 14, "bold")
+        ).pack(side=tk.LEFT)
+        ttk.Label(title_row, textvariable=self.version_var).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(title_row, text="↻", width=3, command=self._on_update).pack(side=tk.RIGHT)
         self.status_lbl = ttk.Label(frm, textvariable=self.status_var)
         self.status_lbl.pack(anchor=tk.W, **pad)
         ttk.Label(frm, textvariable=self.last_var, wraplength=400).pack(anchor=tk.W, **pad)
@@ -83,6 +95,9 @@ class PrintAgentApp:
         ttk.Entry(row, textvariable=self.printer_var, width=22).pack(side=tk.LEFT, padx=6)
         ttk.Label(row, text="Puerto").pack(side=tk.LEFT)
         ttk.Entry(row, textvariable=self.port_var, width=6).pack(side=tk.LEFT, padx=6)
+
+        self.identity_var = tk.StringVar(value=self._identity_text())
+        ttk.Label(box, textvariable=self.identity_var, wraplength=400).pack(anchor=tk.W, pady=(6, 0))
 
         btns = ttk.Frame(box)
         btns.pack(fill=tk.X, pady=(8, 0))
@@ -99,7 +114,7 @@ class PrintAgentApp:
         ttk.Button(cidr_row, text="Descubrir LAN", command=self._on_discover).pack(side=tk.LEFT)
         ttk.Label(
             discover,
-            text="Elegí un resultado para copiarlo al host de arriba.",
+            text="Elegí un resultado (marca y modelo si la ticketera responde).",
             wraplength=400,
         ).pack(anchor=tk.W, pady=(6, 0))
         self.found = tk.Listbox(discover, height=5)
@@ -130,6 +145,7 @@ class PrintAgentApp:
 
         self._refresh_install_ui()
         self.root.after(400, self._poll_status)
+        self.root.after(700, self._identify_current)
 
     def start_api(self) -> None:
         host = self.cfg.local_api_host or DEFAULT_HOST
@@ -153,7 +169,12 @@ class PrintAgentApp:
         self.status_var.set("Escuchando :{}".format(port))
 
     def start_tray(self) -> None:
-        self.tray = TrayController(self._show_window, self._on_test, self._quit)
+        self.tray = TrayController(
+            self._show_window,
+            self._on_test,
+            self._quit,
+            on_update=self._on_update,
+        )
         if not self.tray.start():
             self.tray = None
 
@@ -205,17 +226,40 @@ class PrintAgentApp:
         self.cfg.autostart = bool(self.autostart_var.get())
         save_config(self.cfg, self.cfg_path)
         self.last_var.set("Configuración guardada.")
+        self._identify_current()
+
+    def _identity_text(self) -> str:
+        label = self.cfg.printer.label()
+        if label:
+            return label
+        if self.cfg.printer.host:
+            return "Ticketera en {}:{} (sin identificar)".format(
+                self.cfg.printer.host, self.cfg.printer.port
+            )
+        return "Sin impresora identificada"
+
+    def _apply_identity(self, ident: Dict[str, Any]) -> None:
+        self.cfg.printer.manufacturer = str(ident.get("manufacturer") or "")
+        self.cfg.printer.model = str(ident.get("model") or "")
+        self.cfg.printer.serial = str(ident.get("serial") or "")
+        self.identity_var.set(self._identity_text())
 
     def _on_select_found(self, _evt: Any = None) -> None:
         sel = self.found.curselection()
         if not sel:
             return
-        line = self.found.get(sel[0])
-        if ":" not in line:
+        idx = int(sel[0])
+        if idx < 0 or idx >= len(self._found_devices):
             return
-        host, port = line.rsplit(":", 1)
-        self.printer_var.set(host.strip())
-        self.port_var.set(port.strip())
+        item = self._found_devices[idx]
+        self.printer_var.set(str(item.get("host") or "").strip())
+        self.port_var.set(str(item.get("port") or 9100))
+        self.cfg.printer.host = self.printer_var.get()
+        try:
+            self.cfg.printer.port = int(self.port_var.get() or "9100")
+        except ValueError:
+            self.cfg.printer.port = 9100
+        self._apply_identity(item)
 
     def _on_discover(self) -> None:
         if self.busy:
@@ -238,6 +282,7 @@ class PrintAgentApp:
     def _discover_done(self, devices: List[Any], err: str, cidr: str) -> None:
         self.busy = False
         self.found.delete(0, self.tk.END)
+        self._found_devices = list(devices or [])
         if err:
             self.status_var.set("Error al descubrir: {}".format(err))
             return
@@ -245,12 +290,17 @@ class PrintAgentApp:
             self.status_var.set("Nada en {} :9100".format(cidr))
             return
         for item in devices:
-            self.found.insert(self.tk.END, "{}:{}".format(item["host"], item["port"]))
-        self.status_var.set("Encontradas {} impresora(s)".format(len(devices)))
-        if self.listen_ok:
-            self.status_var.set(
-                "Escuchando :{} — {} impresora(s)".format(self.cfg.local_api_port, len(devices))
+            self.found.insert(
+                self.tk.END,
+                printer_label(item, item.get("host") or "", int(item.get("port") or 9100)),
             )
+        named = sum(1 for item in devices if item.get("manufacturer") or item.get("model"))
+        summary = "Encontradas {} impresora(s)".format(len(devices))
+        if named:
+            summary += ", {} identificada(s)".format(named)
+        self.status_var.set(summary)
+        if self.listen_ok:
+            self.status_var.set("Escuchando :{} — {}".format(self.cfg.local_api_port, summary.lower()))
 
     def _on_test(self) -> None:
         if self.busy:
@@ -282,9 +332,15 @@ class PrintAgentApp:
             return
         RUNTIME.record(True, detail="test print con corte")
         save_config(self.cfg, self.cfg_path)
-        self.last_var.set("Prueba enviada (con corte) a {}:{}".format(
-            self.cfg.printer.host, self.cfg.printer.port
-        ))
+        dest = printer_label(
+            {
+                "manufacturer": self.cfg.printer.manufacturer,
+                "model": self.cfg.printer.model,
+            },
+            self.cfg.printer.host,
+            self.cfg.printer.port,
+        )
+        self.last_var.set("Prueba enviada (con corte) a {}".format(dest))
 
     def _on_autostart_toggle(self) -> None:
         if is_frozen() and not autostart.is_installed_copy():
@@ -314,6 +370,82 @@ class PrintAgentApp:
         self_install_and_relaunch()
         self._quit_silent()
 
+    def _on_update(self) -> None:
+        if self.busy:
+            return
+        self.busy = True
+        self.last_var.set("Buscando actualización…")
+
+        def work() -> None:
+            err = ""
+            info = None
+            try:
+                from lumi_print_agent.update import check_for_update
+
+                info = check_for_update()
+            except Exception as exc:
+                err = str(exc)
+            self.root.after(0, lambda: self._update_check_done(info, err))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_check_done(self, info: Any, err: str) -> None:
+        self.busy = False
+        if err:
+            self.last_var.set("No se pudo consultar updates: {}".format(err))
+            self.messagebox.showerror("Actualización", err)
+            return
+        if info is None:
+            self.last_var.set("No hay release publicado para esta plataforma.")
+            self.messagebox.showinfo(
+                "Actualización",
+                "No hay un paquete publicado para esta plataforma.",
+            )
+            return
+        current = current_version()
+        if not info.update_available:
+            self.last_var.set("Ya estás en v{}.".format(current))
+            self.messagebox.showinfo(
+                "Actualización",
+                "Esta versión v{} ya es la última (v{}).".format(current, info.version),
+            )
+            return
+        notes = (info.notes or "").strip()
+        question = (
+            "Hay una versión nueva v{}.\n"
+            "Se descarga desde {}, se reemplazan los archivos y el agente "
+            "vuelve a abrir en la bandeja."
+        ).format(info.version, info.source)
+        if notes:
+            question = "{}\n\n{}".format(question, notes[:500])
+        if not self.messagebox.askyesno("Actualización", question):
+            self.last_var.set("Actualización cancelada.")
+            return
+        self.busy = True
+        self.last_var.set("Descargando v{}…".format(info.version))
+
+        def work() -> None:
+            apply_err = ""
+            try:
+                from lumi_print_agent.update import apply_extracted_update, download_and_extract
+
+                tree = download_and_extract(info)
+                apply_extracted_update(tree, relaunch=True, hidden=True)
+            except Exception as exc:
+                apply_err = str(exc)
+            self.root.after(0, lambda: self._update_apply_done(apply_err, info.version))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_apply_done(self, err: str, version: str) -> None:
+        self.busy = False
+        if err:
+            self.last_var.set("Error al actualizar: {}".format(err))
+            self.messagebox.showerror("Actualización", err)
+            return
+        self.last_var.set("Actualizado a v{}. Reiniciando…".format(version))
+        self.root.after(400, self._quit_silent)
+
     def _poll_status(self) -> None:
         if self._exiting:
             return
@@ -329,9 +461,36 @@ class PrintAgentApp:
                 self.last_var.set(text)
         printer = self.printer_var.get().strip()
         if self.listen_ok:
-            extra = "impresora {}".format(printer) if printer else "sin impresora elegida"
+            ident = self.cfg.printer.label()
+            if ident and printer:
+                extra = "{} ({})".format(ident, printer)
+            elif printer:
+                extra = "impresora {}".format(printer)
+            else:
+                extra = "sin impresora elegida"
             self.status_var.set("Escuchando :{} — {}".format(self.cfg.local_api_port, extra))
         self.root.after(1000, self._poll_status)
+
+    def _identify_current(self) -> None:
+        host = self.printer_var.get().strip() or self.cfg.printer.host
+        if not host or self.busy:
+            return
+
+        def work() -> None:
+            try:
+                ident = identify_escpos(host, int(self.cfg.printer.port or 9100))
+            except Exception:
+                ident = {}
+            self.root.after(0, lambda: self._identify_done(host, ident))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _identify_done(self, host: str, ident: Dict[str, Any]) -> None:
+        if host != (self.printer_var.get().strip() or self.cfg.printer.host):
+            return
+        if ident.get("manufacturer") or ident.get("model"):
+            self._apply_identity(ident)
+            save_config(self.cfg, self.cfg_path)
 
     def _quit_silent(self) -> None:
         self._exiting = True
@@ -350,6 +509,9 @@ class PrintAgentApp:
     def run(self) -> int:
         self.start_api()
         self.start_tray()
+        if self.start_hidden:
+            # Servicio de bandeja: no mostrar la ventana al iniciar sesión.
+            self.root.withdraw()
         self.root.mainloop()
         return 0
 
@@ -380,6 +542,17 @@ def _gui_import_error_hint(exc: BaseException) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _wants_hidden(args: List[str]) -> bool:
+    if "--hidden" in args or "--tray" in args:
+        return True
+    if os.environ.get("LUMI_PRINT_HIDDEN") == "1":
+        return True
+    # Copia instalada: comportamiento de servicio (bandeja cerca del reloj).
+    if is_frozen() and autostart.is_installed_copy() and "--show" not in args:
+        return True
+    return False
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     dispatched = _dispatch_headless(args)
@@ -389,7 +562,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return self_install_and_relaunch()
     reexec_with_tcl_tk8(args)
     try:
-        app = PrintAgentApp()
+        app = PrintAgentApp(start_hidden=_wants_hidden(args))
     except Exception as exc:
         sys.stderr.write(_gui_import_error_hint(exc))
         return 1

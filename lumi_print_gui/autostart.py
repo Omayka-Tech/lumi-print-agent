@@ -15,10 +15,11 @@ DESKTOP_NAME = "lumi-print-agent.desktop"
 
 
 def launch_command() -> List[str]:
+    # Autostart: solo bandeja (cerca del reloj), sin abrir la ventana.
     if is_frozen():
-        return [str(Path(sys.executable).resolve())]
+        return [str(Path(sys.executable).resolve()), "--hidden"]
     repo = current_app_dir()
-    return [str(Path(sys.executable).resolve()), "-m", "lumi_print_gui"]
+    return [str(Path(sys.executable).resolve()), "-m", "lumi_print_gui", "--hidden"]
 
 
 def _launch_env() -> dict:

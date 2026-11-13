@@ -23,6 +23,7 @@ def test_linux_autostart_desktop(monkeypatch, tmp_path):
     assert desktop.is_file()
     text = desktop.read_text(encoding="utf-8")
     assert "LumiPrintAgent" in text
+    assert "--hidden" in text
     assert "X-GNOME-Autostart-enabled=true" in text
     assert autostart.is_enabled() is True
     autostart.disable()
@@ -41,5 +42,6 @@ def test_macos_autostart_plist(monkeypatch, tmp_path):
     text = plist.read_text(encoding="utf-8")
     assert "tech.omayka.lumi-print-agent" in text
     assert "LumiPrintAgent" in text
+    assert "--hidden" in text
     autostart.disable()
     assert plist.is_file() is False

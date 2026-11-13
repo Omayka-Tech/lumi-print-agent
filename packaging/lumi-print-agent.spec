@@ -44,7 +44,28 @@ a = Analysis(
     [os.path.join(spec_root, "entry.py")],
     pathex=[repo],
     binaries=[],
-    datas=[],
+    datas=[
+        (
+            os.path.join(repo, "lumi_print_gui", "assets", "lumi-mark.png"),
+            os.path.join("lumi_print_gui", "assets"),
+        ),
+        (
+            os.path.join(repo, "lumi_print_gui", "assets", "lumi-print-mark.png"),
+            os.path.join("lumi_print_gui", "assets"),
+        ),
+        (
+            os.path.join(repo, "lumi_print_gui", "assets", "lumi.ico"),
+            os.path.join("lumi_print_gui", "assets"),
+        ),
+        (
+            os.path.join(repo, "lumi_print_gui", "assets", "favicon.ico"),
+            os.path.join("lumi_print_gui", "assets"),
+        ),
+        (
+            os.path.join(repo, "VERSION"),
+            ".",
+        ),
+    ],
     hiddenimports=hidden,
     hookspath=[],
     hooksconfig={},
@@ -61,6 +82,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="LumiPrintAgent",
+    icon=os.path.join(repo, "lumi_print_gui", "assets", "lumi.ico") if sys.platform == "win32" else None,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -28,6 +28,9 @@ VER="$(tr -d '[:space:]' < VERSION)"
 NAME="LumiPrintAgent-${OS}-${ARCH}-v${VER}"
 mkdir -p "${OUT_DIR}"
 
+# Versión legible junto al exe (updater / bandeja).
+cp -f VERSION "${DIST}/VERSION"
+
 case "${OS}" in
   windows)
     ARCHIVE="${OUT_DIR}/${NAME}.zip"
